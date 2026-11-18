@@ -1,12 +1,11 @@
 """Streamlit entry point. Run: streamlit run app.py"""
 from pathlib import Path
-import hashlib
 import time
 import numpy as np
 import pandas as pd
 import streamlit as st
 from volatility_lab.data import DataError, load_csv, annualized_vol, future_dates
-from volatility_lab.demo import DEMO_PATH
+from volatility_lab.yahoo import market_prices
 from volatility_lab.evaluation import Config, evaluate, metric_table, common_rows, selected_rows, export_results, losses
 from volatility_lab.models import MODEL_NAMES
 from volatility_lab.charts import forecast_chart, error_chart, scatter_chart
@@ -95,28 +94,15 @@ def inspector(origin, row, data, asset, config):
 
 st.sidebar.markdown("### ◈ Volatility Lab")
 st.sidebar.caption("RESEARCH PORTFOLIO / 02")
-source_choice = st.sidebar.radio("Data source", ["Synthetic demo", "Upload CSV"])
-demo_raw = DEMO_PATH.read_bytes()
-if source_choice == "Synthetic demo":
-    raw, source = demo_raw, "SYNTHETIC DEMO · seed 20261117"
-else:
-    uploaded = st.sidebar.file_uploader("Adjusted daily closes", type="csv")
-    st.sidebar.download_button("Download CSV template", (ROOT/"data/template.csv").read_bytes(), "template.csv")
-    if uploaded is None:
-        st.title("Volatility Forecasting Lab")
-        st.info("Upload adjusted daily closes with date,SPY and optional QQQ columns. The template illustrates the format; the demo provides a complete runnable dataset.")
-        st.code("date,SPY,QQQ\n2024-01-02,470.00,400.00\n2024-01-03,468.50,397.50", language="text")
-        st.stop()
-    raw = uploaded.getvalue()
-    source = "SYNTHETIC DEMO · uploaded copy" if hashlib.sha256(raw).digest() == hashlib.sha256(demo_raw).digest() else "USER CSV · adjusted closes declared by uploader"
+raw, through = market_prices(("SPY", "QQQ"))
+source = "Yahoo Finance · yfinance"
 try:
     data = load_csv(raw, source)
 except (DataError, ValueError) as exc:
     st.title("Data validation")
     st.error(str(exc))
     st.stop()
-synthetic = source.startswith("SYNTHETIC")
-identity = (source_choice, data.fingerprint)
+identity = data.fingerprint
 if st.session_state.get("identity") != identity:
     for key in ["run", "asset", "period", "inspect_origin", "error_origin"]:
         st.session_state.pop(key, None)
@@ -137,13 +123,12 @@ st.markdown('<div class="eyebrow">QUANTITATIVE RESEARCH / PROJECT 02</div>', uns
 st.title("Volatility Forecasting Lab")
 st.markdown('<div class="subtitle">Can a model forecast next week’s realized volatility better than recent history?</div>', unsafe_allow_html=True)
 st.caption(f"{asset}  /  5 trading sessions  /  {source}")
-if synthetic:
-    st.info("SYNTHETIC DATA — artificial prices with changing volatility regimes. Results demonstrate the workflow, not market performance.", icon="🧪")
-else:
-    st.caption("Input must contain adjusted, completed daily closes. Adjustments and provider revisions cannot be verified from the CSV alone.")
+st.caption(f"Adjusted daily closes · Latest available date: {idx[-1]:%Y-%m-%d}")
+if idx[-1] < through:
+    st.warning(f"Yahoo has not supplied the latest completed session ({through:%Y-%m-%d}).")
 config = Config(int(window), float(lam))
 settings = (data.fingerprint, asset, config.window, config.lam, tuple(period))
-if run_clicked:
+if run_clicked or st.session_state.get("run", (None,))[0] != settings:
     if len(period) != 2:
         st.error("Choose both the first and last evaluation origin.")
     else:
@@ -165,8 +150,6 @@ if view == "Data & methodology":
         with st.expander("Missing prices by session"):
             st.dataframe(missing, width="stretch")
     st.caption(f"Data SHA-256: {data.fingerprint}")
-    st.download_button("Download CSV template", (ROOT/"data/template.csv").read_bytes(), "template.csv", key="method_template")
-    st.download_button("Download synthetic dataset", demo_raw, "synthetic_prices.csv")
     st.markdown((ROOT/"docs/methodology.md").read_text())
     with st.expander("Real-data source review"):
         st.markdown((ROOT/"docs/data_sources.md").read_text())
@@ -180,7 +163,7 @@ if run is None or run[0] != settings:
             st.warning("Inputs changed. Run evaluation to refresh results for these settings.")
     st.stop()
 _, results, latest, runtime = run
-label = f"{asset} · {'SYNTHETIC' if synthetic else 'USER CSV'}"
+label = f"{asset} · {source}"
 st.caption(f"Run: {config.window} trailing returns · EWMA λ {config.lam:.3f} · {len(results)} requested origins · completed in {runtime:.1f}s (cached reruns may be faster)")
 
 if view == "Forecast overview":
@@ -274,7 +257,7 @@ elif view == "Data & methodology":
 
 st.divider()
 st.download_button("Download per-origin results (CSV)", export_results(results, data, asset, config),
-                   f"{'synthetic' if synthetic else 'user_csv'}_{asset}_forecasts.csv", mime="text/csv")
+                   f"yahoo_{asset}_forecasts.csv", mime="text/csv")
 st.caption("Export includes every requested origin, unscored outcomes, model statuses, five daily forecasts, GARCH parameters, units and data fingerprint. Latest overview origin is separate if outside the evaluation interval.")
 st.download_button("Download latest-origin forecast (CSV)", export_results(latest, data, asset, config),
-                   f"{'synthetic' if synthetic else 'user_csv'}_{asset}_latest.csv", mime="text/csv")
+                   f"yahoo_{asset}_latest.csv", mime="text/csv")

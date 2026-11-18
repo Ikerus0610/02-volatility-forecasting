@@ -47,3 +47,13 @@ tzdata==2026.6
 urllib3==2.8.0
 watchdog==6.0.0; sys_platform == "linux"
 wrapt==2.5.2
+yfinance==1.4.1
+beautifulsoup4==4.15.0
+cffi==2.1.1
+curl_cffi==0.17.0
+multitasking==0.0.13
+peewee==4.5.3
+platformdirs==4.14.7
+pycparser==3.12
+soupsieve==4.1.1
+websockets==17.4
