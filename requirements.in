@@ -1,8 +1,0 @@
-pandas==2.2.3
-numpy==2.2.6
-scipy==1.15.3
-arch==7.2.0
-streamlit==1.50.0
-plotly==6.3.1
-exchange-calendars==4.11.2
-yfinance==1.4.1
